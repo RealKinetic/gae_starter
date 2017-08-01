@@ -15,9 +15,27 @@ While Google has a decent amount of documentation for Google App Engine and the 
 
 A note this guide focus on Python 2.7 on the GAE standard environment. In future posts we hope to show how to use other languages on the Flexible environment.
 
+### Initial Skeleton
+
 We're going to start with the same steps as the [Google provided Quickstart](https://cloud.google.com/appengine/docs/standard/python/quickstart). So go ahead and walk through that guide for the hello world as the first step. While it's not a requirement for you to have a deep understanding of GAE we do recommend understanding some of the basics. So we recommend stepping through the rest of the guide to develop a flask app. This will help you understand the basic structure and capabilities of GAE. We'll also be creating a Flask project so much of the material will translate.
 
 For the first step of this guide we're going to start from the [hello world example provided by Google](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/master/appengine/standard/hello_world). You can either clone the full examples repo and go to that directory or since they are only 3 files you could just copy them down. Once done you should end up with a single directory that holds 3 files: `app.yaml`, `main.py` and `main_test.py`.
+
+Once you have those files in your directory you can test your app by running:
+
+```
+$ dev_appserver.py app.yaml
+```
+
+Or the shorthand version of:
+
+```
+$ dev_appserver.py .
+```
+
+Which will look for the app.yaml to run off of.
+
+### Virtual Environments
 
 Now we are proponents of Python Virtual Environments. If you're not familiar with [Python virtualenv](http://pypi.python.org/pypi/virtualenv) you can learn more in the excellent ["The Hitchhiker's Guide to Python"](http://python-guide-pt-br.readthedocs.io/en/latest/) and it's [section on Virtual Environments](http://python-guide-pt-br.readthedocs.io/en/latest/dev/virtualenvs/). Personally I'm also a fan of [virtualenvwrapper](https://virtualenvwrapper.readthedocs.io/en/latest/index.html) which is covered at the [bottom of the same guide](http://python-guide-pt-br.readthedocs.io/en/latest/dev/virtualenvs/#virtualenvwrapper). Virtualenv wrapper provides some nice UX improvements over vitrualenv.
 
@@ -52,3 +70,107 @@ $ workon gaestarter
 ```
 
 This will take you to the project directory and activate the virtualenv.
+
+### Flask REST API Server
+
+The first thing we're going to build out is a [REST](https://en.wikipedia.org/wiki/Representational_state_transfer) server to expose http endpoints via [Flask](http://flask.pocoo.org/).
+
+  Flask is a microframework for Python based on Werkzeug, Jinja 2 and good intentions. And before you ask: It's BSD licensed!
+
+Flask is our favorite Python web framework as it's relatively simple and provides the flexibility to be configured for many different use cases. As mentioned our first use case is as a REST API. We're going to send and receive JSON encoded data over http.
+
+Adding Flask to our project takes us to one of the under documented yet important part of your application. Dependency and package management. It's one thing to add a library to our project but how do we ensure it gets deployed correctly while running correctly locally both with the development server and via our unit tests.
+
+### Dependency Management, 3rd Party Libraries, etc
+
+We like to use as many standard Python practices as possible. This is why we're using tools such as `pip` and `virtualenv` however there's some tricks we need to do to ensure they work correctly with GAE.
+
+By default when installing libraries with pip they will be installed into your `site-packages` directory. If you're not using `virutalenv` this will be the global site-packages directory that sits within your Python directory.
+
+Deactive your virtualenv and you can see where your system Python site-packages directory is by running this command:
+
+```
+$ python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())"
+```
+
+You'll see a result similar to this:
+
+```
+/usr/local/Cellar/python/2.7.13/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages
+```
+
+If you activate your virtualenv (venv) and do the same you'll see somthing like:
+
+```
+/Users/username/.virtualenvs/gaestarter/lib/python2.7/site-packages
+```
+
+This is how virtual environments keep your libraries separate. A note virtual env creates a global variable for your virtual environment. In an active virtual environment run:
+
+```
+$ echo $VIRTUAL_ENV
+```
+
+The problem with storing our libraries in site-packages is when deploying our GAE project it only pulls files from our directory up. So it will not bundle our libraries in site-packages and deploy them. You will end up with import errors when trying to run the deployed application.
+
+To mitigate this problem pip gives us a way to override where packages are install when running the pip command. In this case we're going to create a `vendor` directory to store the libraries we want deployed with our application.
+
+```
+mkdir vendor
+```
+
+We could then install a single library like so:
+
+```
+$ pip install flask -t vendor
+```
+
+If you run that command you'll see many directories now exist in our vendor directory. This includes Flask all of the libraries that Flask is dependent upon. Unfortunately if we want to uninstall Flask we can't just use `pip uninstall flask` as it looks only in site-directories and as of the moment the `-t` flag is not supported by uninstall. However for now we can just clear all of the libraries out of our vendor directory.
+
+```
+$ rm -rf vendor/*
+```
+
+Now this would be annoying if we had to do this for all packages. But thankfully pip comes with support for using a file that lists all our libraries which we generally call `requirements.txt`. So create a file named `requirements.txt` and add the following line
+
+```
+Flask>=0.11,<0.12
+```
+
+By adding the `>=0.11,<0.12` to the entry we're ensuring that when install Flask it will always use the most recent version of Flask above version `0.11` but below version `0.12`. This is generally called pinning a version. This is often critical in managing our dependencies to avoid pulling in broken or non-tested changes from upstream providers. Or often you'll hit collisions with multiple libraries not supporting the same versions of dependencies.
+
+To install the libraries from our requirements.txt file you run the following command:
+
+```
+$ pip install -Ur requirements.txt -t vendor
+```
+
+The `-r` says we're passing in a file of libraries instead of a library name. The `-U` says to check for updates to any of the libraries and install those if there's a newer version than we currently have installed.
+
+If you run that command now you'll see the same install steps we witnessed when installing Flask directly.
+
+* FYI for those using git you will want to add `vendor` to your `.gitignore` file as there's no need to commit these files into your repo.
+
+### Makefile
+
+At Real Kinetic we're fans of using Makefiles to give us shortcuts to the commands we often run. We like Make as it's simple and is supported on OSX and Linux distributions. Create a file named `Makefile` in your project root.
+
+Then add the following:
+
+```
+install:
+    pip install -Ur requirements.txt -t vendor
+```
+
+Now you can run the following command as shorthand for the pip command:
+
+```
+make install
+```
+
+And while we're at it let's add a command to run our development server. Add the following to your Makefile:
+
+```
+run:
+    dev_appserver.py .
+```
