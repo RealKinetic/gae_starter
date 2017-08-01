@@ -12,14 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-runtime: python27
-api_version: 1
-threadsafe: true
+from google.appengine.ext import vendor
 
-handlers: 
-- url: /.* 
-  script: main.app
-
-libraries:
-- name: flask
-  version: "0.12"
+# Add the libraries installed in our vendor folder.
+vendor.add('vendor')
