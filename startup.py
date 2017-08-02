@@ -11,11 +11,3 @@ venv = os.environ.get("VIRTUAL_ENV")
 if venv:
     sys.path.insert(0, "{}/lib/python2.7/site-packages".format(venv))
 
-from google.appengine.ext import vendor
-vendor.add(venv)
-print 40 * "$"
-print 40 * "$"
-print venv
-print sys.path
-print 40 * "$"
-print 40 * "$"
